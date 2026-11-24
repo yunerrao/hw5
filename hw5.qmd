@@ -1,0 +1,428 @@
+---
+title: "Homework5"
+author: "Yuner Rao"
+format:
+  html:
+    self-contained: true   
+    code-fold: true    
+    code-summary: "Show the code"
+---
+
+## Problem 1.1
+
+1.1.1 Class Definition and Constructor
+
+```{r}
+# class definition and constructor
+setClass(
+  "waldCI",
+  slots = c(
+    mean = "numeric",
+    sterr = "numeric",
+    level = "numeric"
+  )
+)
+
+# Helper function: critical value
+z_value <- function(level) {
+  qnorm((1 - level) / 2, lower.tail = FALSE)
+}
+
+# Helper function: check finite numeric scalar
+is_scalar <- function(x) {
+  is.numeric(x) && length(x) == 1 && is.finite(x)
+}
+
+# Custom constructor
+makeCI <- function(level, mean = NULL, sterr = NULL,
+                   lb = NULL, ub = NULL) {
+  
+  if (!is_scalar(level) || level <= 0 || level >= 1) {
+    stop("Confidence level must be between 0 and 1.")
+  }
+  
+  if (!is.null(mean) && !is.null(sterr) &&
+      is.null(lb) && is.null(ub)) {
+    
+    obj <- new("waldCI",
+               mean = mean,
+               sterr = sterr,
+               level = level)
+    
+  } else if (!is.null(lb) && !is.null(ub) &&
+             is.null(mean) && is.null(sterr)) {
+    
+    if (!is_scalar(lb) || !is_scalar(ub)) {
+      stop("Bounds must be finite numeric scalars.")
+    }
+    
+    if (lb > ub) {
+      stop("Lower bound cannot exceed upper bound.")
+    }
+    
+    obj <- new("waldCI",
+               mean = lb / 2 + ub / 2,
+               sterr = (ub / 2 - lb / 2) / z_value(level),
+               level = level)
+    
+  } else {
+    stop("Provide either mean and sterr, or lb and ub.")
+  }
+  
+  validObject(obj)
+  return(obj)
+}
+```
+
+1.1.2 Valudator
+
+```{r}
+setValidity("waldCI", function(object) {
+  
+  if (!is_scalar(object@mean)) {
+    return("Mean must be a finite numeric scalar.")
+  }
+  
+  if (!is_scalar(object@sterr) || object@sterr < 0) {
+    return("Standard error must be finite and non-negative.")
+  }
+  
+  if (!is_scalar(object@level) ||
+      object@level <= 0 || object@level >= 1) {
+    return("Confidence level must be between 0 and 1.")
+  }
+  
+  z <- z_value(object@level)
+  
+  lower <- object@mean - z * object@sterr
+  upper <- object@mean + z * object@sterr
+  
+  if (!is.finite(lower) || !is.finite(upper)) {
+    return("Confidence bounds must be finite.")
+  }
+  
+  if (lower > upper) {
+    return("Lower bound cannot exceed upper bound.")
+  }
+  
+  return(TRUE)
+})
+
+```
+
+1.1.3 Show Method
+
+```{r}
+setMethod("show", "waldCI", function(object) {
+  
+  z <- z_value(object@level)
+  
+  lower <- object@mean - z * object@sterr
+  upper <- object@mean + z * object@sterr
+  
+  cat("Wald Confidence Interval\n")
+  cat("Confidence level:", object@level * 100, "%\n")
+  cat("Mean:", object@mean, "\n")
+  cat("Standard error:", object@sterr, "\n")
+  cat("Interval: [", lower, ", ", upper, "]\n", sep = "")
+})
+
+```
+
+1.1.4 Accessors
+
+```{r}
+# Define generic functions
+setGeneric("lb", function(x) standardGeneric("lb"))
+setGeneric("ub", function(x) standardGeneric("ub"))
+setGeneric("sterr", function(x) standardGeneric("sterr"))
+setGeneric("level", function(x) standardGeneric("level"))
+setGeneric("mean")
+
+# Lower bound
+setMethod("lb", "waldCI", function(x) {
+  x@mean - z_value(x@level) * x@sterr
+})
+
+# Upper bound
+setMethod("ub", "waldCI", function(x) {
+  x@mean + z_value(x@level) * x@sterr
+})
+
+# Mean
+setMethod("mean", "waldCI", function(x, ...) {
+  x@mean
+})
+
+# Standard error
+setMethod("sterr", "waldCI", function(x) {
+  x@sterr
+})
+
+# Confidence level
+setMethod("level", "waldCI", function(x) {
+  x@level
+})
+```
+
+1.1.5 Setters
+
+```{r}
+# Define replacement generics
+setGeneric("lb<-", function(x, value) {
+  standardGeneric("lb<-")
+})
+
+setGeneric("ub<-", function(x, value) {
+  standardGeneric("ub<-")
+})
+
+setGeneric("mean<-", function(x, value) {
+  standardGeneric("mean<-")
+})
+
+setGeneric("sterr<-", function(x, value) {
+  standardGeneric("sterr<-")
+})
+
+setGeneric("level<-", function(x, value) {
+  standardGeneric("level<-")
+})
+
+# Lower bound setter
+setReplaceMethod("lb", "waldCI", function(x, value) {
+  
+  x <- makeCI(
+    level = level(x),
+    lb = value,
+    ub = ub(x)
+  )
+  
+  validObject(x)
+  return(x)
+})
+
+# Upper bound setter
+setReplaceMethod("ub", "waldCI", function(x, value) {
+  
+  x <- makeCI(
+    level = level(x),
+    lb = lb(x),
+    ub = value
+  )
+  
+  validObject(x)
+  return(x)
+})
+
+# Mean setter
+setReplaceMethod("mean", "waldCI", function(x, value) {
+  
+  x@mean <- value
+  validObject(x)
+  return(x)
+})
+
+# Standard error setter
+setReplaceMethod("sterr", "waldCI", function(x, value) {
+  
+  x@sterr <- value
+  validObject(x)
+  return(x)
+})
+
+# Confidence level setter
+setReplaceMethod("level", "waldCI", function(x, value) {
+  
+  x@level <- value
+  validObject(x)
+  return(x)
+})
+```
+
+1.1.6 Contains Method
+
+```{r}
+setGeneric("contains", function(x, value) {
+  standardGeneric("contains")
+})
+
+setMethod(
+  "contains",
+  signature(x = "waldCI", value = "numeric"),
+  function(x, value) {
+    value >= lb(x) & value <= ub(x)
+  }
+)
+```
+
+1.1.7 Overlap Method
+
+```{r}
+setGeneric("overlap", function(x, y) {
+  standardGeneric("overlap")
+})
+
+setMethod(
+  "overlap",
+  signature(x = "waldCI", y = "waldCI"),
+  function(x, y) {
+    lb(x) <= ub(y) && lb(y) <= ub(x)
+  }
+)
+```
+
+1.1.8 As.numeric Method
+
+```{r}
+setGeneric("as.numeric")
+
+setMethod("as.numeric", "waldCI", function(x, ...) {
+  c(lb(x), ub(x))
+})
+```
+
+1.1.9 TransformCI Method
+
+```{r}
+setGeneric("transformCI", function(x, fun) {
+  standardGeneric("transformCI")
+})
+
+setMethod(
+  "transformCI",
+  signature(x = "waldCI", fun = "function"),
+  function(x, fun) {
+    
+    warning("Only monotonic transformations make sense.")
+    
+    # Generate equally spaced points
+    points <- seq(lb(x), ub(x), length.out = 1000)
+    
+    # Apply the transformation
+    transformed <- vapply(points, fun, numeric(1))
+    
+    # Check for non-finite values
+    if (any(!is.finite(transformed))) {
+      stop("Transformation produces non-finite values.")
+    }
+    
+    # Check approximate monotonicity
+    differences <- diff(transformed)
+    
+    increasing <- all(differences >= 0)
+    decreasing <- all(differences <= 0)
+    
+    if (!increasing && !decreasing) {
+      stop("The function is not monotonic on the interval.")
+    }
+    
+    # Transform the endpoints
+    bounds <- c(fun(lb(x)), fun(ub(x)))
+    
+    # Return a new waldCI object
+    makeCI(
+      level = level(x),
+      lb = min(bounds),
+      ub = max(bounds)
+    )
+  }
+)
+```
+
+The `waldCI` class stores the mean, standard error, and confidence level as three numeric slots. The lower and upper bounds are calculated from these quantities to avoid redundant information and maintain internal consistency. All setters validate the resulting object before returning it.
+
+For `transformCI`, monotonicity is approximately checked using 1,000 equally spaced points within the original confidence interval. Both increasing and decreasing transformations are supported by taking the minimum and maximum of the transformed endpoints. This numerical approach does not guarantee mathematical monotonicity. For nonlinear transformations, the new mean and standard error are reconstructed from the transformed bounds.
+
+## Problem 1.2
+
+```{r}
+# Create three confidence intervals
+ci1 <- makeCI(level = 0.95, lb = 17.2, ub = 24.7)
+ci2 <- makeCI(level = 0.99, mean = 13, sterr = 2.5)
+ci3 <- makeCI(level = 0.75, lb = 27.43, ub = 39.22)
+
+# Display the objects
+ci1
+ci2
+ci3
+
+# Convert to numeric vectors
+as.numeric(ci1)
+as.numeric(ci2)
+as.numeric(ci3)
+
+# Test accessors
+lb(ci2)
+ub(ci2)
+mean(ci1)
+sterr(ci3)
+level(ci2)
+
+# Test setters
+lb(ci2) <- 10.5
+mean(ci3) <- 34
+level(ci3) <- .8
+
+# Display the updated objects
+ci2
+ci3
+
+# Test contains and overlap
+contains(ci1, 17)
+contains(ci3, 44)
+overlap(ci1, ci2)
+
+# Test transformations
+eci1 <- transformCI(ci1, sqrt)
+eci1
+mean(transformCI(ci2, log))
+```
+
+All three confidence intervals are successfully constructed, and the accessors return the expected values. After applying the setters, `ci2` becomes \[10.5, 19.43957\], while `ci3` becomes \[27.43265, 40.56735\] with an 80% confidence level.
+
+The `contains` method returns `FALSE` for both tested values, while the `overlap` method returns `TRUE`, indicating that `ci1` and the modified `ci2` overlap. The square root transformation produces a new confidence interval of \[4.147288, 4.969909\], and the logarithmic transformation of `ci2` gives a midpoint of 2.659343. Both transformations generate the expected monotonicity warnings.
+
+These results demonstrate that all implemented methods work as intended for the given examples.
+
+## Problem 1.3
+
+```{r}
+# 1. Negative standard error
+try(makeCI(level = 0.95, mean = 20, sterr = -2))
+
+# 2. Lower bound greater than upper bound
+try(makeCI(level = 0.95, lb = 30, ub = 20))
+
+# 3. Infinite bounds
+try(makeCI(level = 0.95, lb = -Inf, ub = 20))
+try(makeCI(level = 0.95, lb = 10, ub = Inf))
+
+# 4. Invalid use of setters
+
+# Invalid lower bound
+try(lb(ci1) <- 100)
+
+# Invalid upper bound
+try(ub(ci1) <- 0)
+
+# Invalid mean
+try(mean(ci1) <- Inf)
+
+# Invalid standard error
+try(sterr(ci1) <- -5)
+
+# Invalid confidence level
+try(level(ci1) <- 1.5)
+
+# 5. Directly test the S4 validator
+try(new("waldCI", mean = 10, sterr = -2, level = 0.95))
+
+# Check that the original object remains valid
+validObject(ci1)
+ci1
+```
+
+All invalid confidence intervals are successfully rejected by the constructor or validator, including negative standard errors, incorrectly ordered bounds, infinite bounds, and invalid setter operations. The direct use of `new()` also produces an error for an invalid object, confirming that validation is enforced at the class level.
+
+Finally, `validObject(ci1)` returns `TRUE`, and the original 95% confidence interval remains unchanged at \[17.2, 24.7\]. These results demonstrate that the validation mechanisms work as intended for all tested cases.
